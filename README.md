@@ -24,7 +24,7 @@ RedTrack V2 is an open-source, full-stack Reddit user analysis application. It a
 
 1. **Clone the repository** (or navigate to the project folder):
    ```bash
-   cd /Users/user/Desktop/IT/red_track
+   cd red-track
    ```
 
 2. **Install Node modules**:
