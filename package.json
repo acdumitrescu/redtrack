@@ -1,0 +1,17 @@
+{
+  "name": "red-track",
+  "version": "1.0.0",
+  "description": "Open source Reddit user analyzer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.5.2",
+    "node-cron": "^3.0.3",
+    "sql.js": "^1.11.0"
+  }
+}

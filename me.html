@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Personal Monitor — RedTrack</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { background: var(--bg-primary); color: var(--text-primary); font-family: 'Roboto', sans-serif; }
+    .nav-bar { padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: var(--bg-secondary); }
+    .container { max-width: 100%; margin: 0 auto; padding: 2rem; display: grid; grid-template-columns: 1fr 300px; gap: 2rem; }
+    
+    .auth-box { max-width: 400px; margin: 5rem auto; text-align: center; background: var(--bg-card); padding: 2rem; border-radius: var(--radius-lg); border: 1px solid var(--border); }
+    .auth-box input { width: 100%; padding: 0.75rem; margin-bottom: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-secondary); color: #fff; }
+    
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem; }
+    
+    .profile-header { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 2rem; }
+    .profile-header img { width: 64px; height: 64px; border-radius: 50%; }
+    .profile-stats { display: flex; gap: 2rem; margin-top: 0.5rem; }
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-label { font-size: 0.75rem; color: var(--text-tertiary); text-transform: uppercase; }
+    .stat-value { font-size: 1.25rem; font-weight: 700; color: var(--accent); }
+    
+    .delta-positive { color: var(--positive); }
+    .delta-negative { color: var(--negative); }
+    .delta-neutral { color: var(--text-muted); }
+    
+    .chart-container { height: 250px; position: relative; width: 100%; margin-top: 1rem; }
+    
+    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1rem; gap: 1rem; }
+    .tab-btn { background: none; border: none; color: var(--text-muted); padding: 0.5rem 0; cursor: pointer; border-bottom: 2px solid transparent; }
+    .tab-btn.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); text-transform: uppercase; font-size: 0.75rem; font-weight: 600; }
+    
+    .feed-item { padding: 1rem 0; border-bottom: 1px solid var(--border); }
+    .feed-item:last-child { border-bottom: none; }
+    .feed-meta { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+    .feed-body { font-size: 0.9rem; line-height: 1.5; color: var(--text-secondary); }
+    
+    .karma-log-item { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px dashed var(--border); font-size: 0.85rem; }
+    .karma-log-item:last-child { border-bottom: none; }
+    
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="nav-bar">
+    <div style="font-weight: 800; font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem;">
+      <div style="width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);"></div>
+      My Monitor
+    </div>
+    <button class="btn-outline" onclick="location.href='/'">Back to App</button>
+  </div>
+  
+  <div id="auth-section" class="auth-box">
+    <h2>Admin Login</h2>
+    <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1.5rem;">Requires ADMIN_PASSWORD</p>
+    <input type="password" id="admin-pw" placeholder="Password" />
+    <button class="btn-primary" style="width:100%" onclick="login()">Access Monitor</button>
+    <div id="auth-error" style="color:var(--negative);margin-top:1rem;font-size:0.85rem;display:none;"></div>
+  </div>
+
+  <div id="dashboard" class="container" style="display:none;">
+    
+    <!-- Left Column: Main Content -->
+    <div>
+      <div class="profile-header card">
+        <img id="my-avatar" src="" alt="Avatar">
+        <div>
+          <h1 id="my-username" style="margin:0 0 0.25rem 0; font-size: 1.5rem;">u/...</h1>
+          <div class="profile-stats">
+            <div class="stat-item">
+              <span class="stat-label">Total Karma</span>
+              <span class="stat-value" id="my-karma">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">24h Change</span>
+              <span class="stat-value" id="my-delta-24">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">7d Change</span>
+              <span class="stat-value" id="my-delta-7d">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">API Reqs (6h)</span>
+              <span class="stat-value" id="my-api-reqs" style="color:var(--info)">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3>Activity Timeline (Last 6 Months)</h3>
+        <div class="chart-container">
+          <canvas id="activity-chart"></canvas>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3>Interactions & Threads</h3>
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="tab-replied">Top Replied-To Users</button>
+          <button class="tab-btn" data-tab="tab-threads">My Conversation Threads</button>
+          <button class="tab-btn" data-tab="tab-subs">Top Subreddits</button>
+        </div>
+        
+        <div id="tab-replied" class="tab-content active">
+          <table>
+            <thead>
+              <tr><th>Connected User</th><th>My Replies</th><th>Last Interaction</th><th>Action</th></tr>
+            </thead>
+            <tbody id="replied-body"></tbody>
+          </table>
+        </div>
+        
+        <div id="tab-threads" class="tab-content">
+          <table>
+            <thead>
+              <tr><th>Thread Context</th><th>Subreddit</th><th>My Comments</th><th>Last Comment</th></tr>
+            </thead>
+            <tbody id="threads-body"></tbody>
+          </table>
+        </div>
+        
+        <div id="tab-subs" class="tab-content">
+          <div class="chart-container">
+            <canvas id="subs-chart"></canvas>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3>My Recent Content</h3>
+        <div class="tabs" style="border:none;">
+          <button class="tab-btn active" data-filter="all">All</button>
+          <button class="tab-btn" data-filter="posts">Posts</button>
+          <button class="tab-btn" data-filter="comments">Comments</button>
+        </div>
+        <div id="feed-container"></div>
+      </div>
+    </div>
+    
+    <!-- Right Column: Sidebar -->
+    <div>
+      <div class="card">
+        <h3>Writing Stats</h3>
+        <div style="margin-top:1rem; display:flex; flex-direction:column; gap:1rem;">
+          <div>
+            <div class="stat-label">Avg Comment Length</div>
+            <div class="stat-value" style="color:var(--text-primary)" id="stat-words">0 words</div>
+          </div>
+          <div>
+            <div class="stat-label">Most Active Hour</div>
+            <div class="stat-value" style="color:var(--text-primary)" id="stat-hour">-</div>
+          </div>
+          <div>
+            <div class="stat-label">Top Used Words (My Comments)</div>
+            <div id="stat-top-words" style="margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.5rem; font-size:0.8rem;"></div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3>Live Karma Log</h3>
+        <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:1rem;">Snapshots taken by the background monitor</p>
+        <div id="karma-log-container" style="max-height: 400px; overflow-y:auto; padding-right:0.5rem;">
+          <!-- Items go here -->
+        </div>
+      </div>
+    </div>
+    
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/me.js"></script>
+</body>
+</html>

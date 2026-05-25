@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <title>Live Wiretaps — RedTrack</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { background: var(--bg-primary); color: var(--text-primary); font-family: 'Roboto', sans-serif; }
+    .nav-bar { padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: var(--bg-secondary); }
+    .container { max-width: 100%; margin: 0 auto; padding: 2rem; display: grid; grid-template-columns: 350px 1fr; gap: 2rem; }
+    
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.5rem; }
+    
+    /* Live Indicator */
+    .live-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--negative);
+      box-shadow: 0 0 10px var(--negative);
+      animation: pulse-ring 2s ease infinite;
+      display: inline-block;
+      margin-right: 0.5rem;
+    }
+    
+    .tap-list { list-style: none; padding: 0; margin: 0; }
+    .tap-item {
+      padding: 1rem; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .tap-item:hover { background: var(--bg-glass); }
+    .tap-item.active { border-left: 3px solid var(--accent); background: var(--accent-dim); }
+    
+    .feed-item { padding: 1rem; border-bottom: 1px dashed var(--border); }
+    .feed-item.completed { border-left: 2px solid var(--positive); opacity: 0.7; }
+    .feed-item.dropped { border-left: 2px solid var(--text-muted); opacity: 0.4; }
+    .feed-item.monitoring { border-left: 2px solid var(--accent); }
+    
+    .status-badge {
+      font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: bold;
+    }
+    .badge-monitoring { background: var(--accent-dim); color: var(--accent); }
+    .badge-completed { background: rgba(16,185,129,0.1); color: var(--positive); }
+    .badge-dropped { background: rgba(161,161,170,0.1); color: var(--text-muted); }
+    
+    .chart-container { height: 300px; position: relative; width: 100%; margin-top: 1rem; }
+    
+    .add-tap-form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .add-tap-form input { flex: 1; padding: 0.75rem; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-secondary); color: #fff; }
+    
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  
+  <div class="nav-bar">
+    <div style="font-weight: 800; font-size: 1.2rem; display: flex; align-items: center; color: var(--text-primary);">
+      <div class="live-dot"></div>
+      <span class="title-text">OSINT Live Wiretap</span>
+    </div>
+    <button class="btn-outline" onclick="location.href='/'">Deactivate Interface</button>
+  </div>
+  
+  <div class="container">
+    <!-- Left Column: Active Taps -->
+    <div>
+      <div class="card">
+        <h3>Deploy New Tap</h3>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:1rem;">Attach a forward-looking monitor to intercept new posts.</p>
+        <div class="add-tap-form">
+          <input type="text" id="new-tap-input" placeholder="e.g. roumanie" />
+          <button class="btn-primary" id="btn-add-tap">Deploy</button>
+        </div>
+      </div>
+      
+      <div class="card" style="padding:0; overflow:hidden;">
+        <h3 style="padding:1.5rem 1.5rem 0.5rem; margin:0;">Active Taps</h3>
+        <ul id="tap-list" class="tap-list">
+          <!-- Populated by JS -->
+        </ul>
+      </div>
+    </div>
+    
+    <!-- Right Column: Subreddit Intel -->
+    <div id="intel-dashboard" style="display:none;">
+      
+      <div class="card" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <h1 id="intel-title" style="margin:0 0 0.25rem 0; font-size: 2rem; color: var(--accent);">r/...</h1>
+          <div style="font-size:0.85rem;color:var(--text-muted);" id="intel-meta">Wiretap activated at ...</div>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+          <button class="btn-primary" id="btn-force-fetch" style="background:var(--accent); color:#000;">Force Sync (24h)</button>
+          <button class="btn-outline" id="btn-remove-tap" style="border-color:var(--negative);color:var(--negative);">Sever Tap</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Intercepted Communications Feed</h3>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:1rem;">Raw feed of intercepted threads. AI Summaries attached to completed items.</p>
+        <div id="feed-container" style="max-height: 600px; overflow-y:auto; padding-right:0.5rem;">
+          <!-- Items go here -->
+        </div>
+      </div>
+      
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/subreddit.js"></script>
+</body>
+</html>

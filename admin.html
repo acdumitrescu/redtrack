@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RedTrack — Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { padding: 2rem; background: var(--bg-primary); color: var(--text-primary); font-family: 'Roboto', sans-serif; }
+    .admin-container { max-width: 100%; padding: 0 2rem; margin: 0 auto; }
+    .auth-box { background: var(--bg-card); padding: 2rem; border-radius: var(--radius-lg); text-align: center; max-width: 400px; margin: 5rem auto; border: 1px solid var(--border); }
+    .auth-box input { padding: 0.75rem; width: 100%; margin-bottom: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); }
+    .admin-stats { display: flex; gap: 1rem; margin-bottom: 2rem; }
+    .admin-stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.5rem; flex: 1; text-align: center; }
+    .admin-stat-value { font-size: 2rem; font-weight: 800; color: var(--accent); }
+    .admin-stat-label { font-size: 0.8rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem; }
+    #admin-content { display: none; }
+    .table-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: var(--bg-secondary); color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+  </style>
+</head>
+<body>
+  <div class="admin-container">
+    
+    <div id="auth-section" class="auth-box">
+      <h2>Admin Login</h2>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1.5rem;">Enter the ADMIN_PASSWORD defined in .env</p>
+      <input type="password" id="admin-pw" placeholder="Password" />
+      <button class="btn-primary" style="width:100%" onclick="login()">Access Dashboard</button>
+      <div id="auth-error" style="color:var(--negative);margin-top:1rem;font-size:0.85rem;display:none;"></div>
+    </div>
+
+    <div id="admin-content">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem;">
+        <h1>RedTrack Admin Console</h1>
+        <button class="btn-outline" onclick="location.href='/'">Back to App</button>
+      </div>
+
+      <div class="admin-stats">
+        <div class="admin-stat-card">
+          <div class="admin-stat-value" id="stat-db-users">0</div>
+          <div class="admin-stat-label">Stored Users</div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-value" id="stat-db-posts">0</div>
+          <div class="admin-stat-label">Stored Posts</div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-value" id="stat-db-comments">0</div>
+          <div class="admin-stat-label">Stored Comments</div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Total Karma</th>
+              <th>Created On</th>
+              <th>Last Fetched</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="users-table-body">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let adminToken = '';
+
+    function formatDate(utc) {
+      if (!utc) return '-';
+      return new Date(utc * 1000).toLocaleString();
+    }
+
+    async function login() {
+      const pw = document.getElementById('admin-pw').value;
+      const res = await fetch('/api/admin/users', { headers: { 'x-admin-password': pw } });
+      const json = await res.json();
+      
+      if (!json.success) {
+        const err = document.getElementById('auth-error');
+        err.textContent = json.error;
+        err.style.display = 'block';
+      } else {
+        adminToken = pw;
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('admin-content').style.display = 'block';
+        renderUsers(json.data);
+        loadStats();
+      }
+    }
+
+    async function loadStats() {
+      const res = await fetch('/api/db/stats', { headers: { 'x-admin-password': adminToken } });
+      const json = await res.json();
+      if (json.success) {
+        document.getElementById('stat-db-users').textContent = json.data.users;
+        document.getElementById('stat-db-posts').textContent = json.data.posts;
+        document.getElementById('stat-db-comments').textContent = json.data.comments;
+      }
+    }
+
+    function escapeHTML(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>'"]/g, match => {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[match];
+      });
+    }
+
+    function renderUsers(users) {
+      const tbody = document.getElementById('users-table-body');
+      tbody.innerHTML = users.map(u => `
+        <tr>
+          <td><strong style="color:var(--text-primary)">u/${escapeHTML(u.username)}</strong></td>
+          <td>${u.total_karma.toLocaleString()}</td>
+          <td>${formatDate(u.created_utc)}</td>
+          <td>${formatDate(u.fetched_at)}</td>
+          <td><button class="btn-sm btn-outline" onclick="location.href='/?u=${encodeURIComponent(u.username)}'">View Details</button></td>
+        </tr>
+      `).join('');
+    }
+
+    // Auto-login on enter
+    document.getElementById('admin-pw').addEventListener('keydown', e => {
+      if (e.key === 'Enter') login();
+    });
+
+  </script>
+</body>
+</html>

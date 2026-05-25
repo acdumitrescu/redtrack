@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RedTrack V2 — Open Source Reddit User Analyzer</title>
+  <meta name="description" content="Analyze any Reddit user's activity, subreddit distribution, karma trends, and writing style. Free, open source, no account needed.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <!-- D3.js for Connection Graph -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <!-- Marked for rendering Markdown in AI analysis -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- DOMPurify for sanitizing marked output -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <!-- jsPDF and AutoTable for PDF Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+  <!-- ==================== HEADER ==================== -->
+  <header class="app-header" id="app-header">
+    <div class="header-inner">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path>
+          <path d="M12 2v2"></path>
+          <path d="M12 20v2"></path>
+          <path d="m4.93 4.93 1.41 1.41"></path>
+          <path d="m17.66 17.66 1.41 1.41"></path>
+          <path d="M2 12h2"></path>
+          <path d="M20 12h2"></path>
+        </svg>
+        <span class="logo-text">RedTrack</span>
+        <span class="logo-badge">V2 Database</span>
+      </div>
+      <div class="header-actions">
+        <button class="header-btn" onclick="location.href='/subreddit.html'" style="color:var(--accent); border-color:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+          Wiretaps
+        </button>
+        <button class="header-btn" onclick="location.href='/me'">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          My Monitor
+        </button>
+        <button id="show-monitors-btn" class="header-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Monitored Users
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Monitors Modal -->
+  <div class="modal-overlay" id="monitors-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Monitored Users</h3>
+        <button id="close-monitors-btn" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <ul id="monitors-list" class="monitors-list">
+          <!-- Populated by JS -->
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== HERO / SEARCH ==================== -->
+  <section class="hero-section" id="hero-section">
+    <div class="hero-content">
+      <div class="hero-glow"></div>
+      <h1 class="hero-title">
+        Analyze Any <span class="text-gradient">Reddit User</span>
+      </h1>
+      <p class="hero-subtitle">
+        Deep-dive into posting patterns, AI profile assessment, connection graph, and word analytics.
+      </p>
+      <div class="search-box" id="search-box">
+        <div class="search-prefix">u/</div>
+        <input type="text" id="search-input" class="search-input" placeholder="Enter a Reddit username..." autocomplete="off" spellcheck="false">
+        <button id="search-btn" class="search-btn" aria-label="Analyze user">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.3-4.3"></path>
+          </svg>
+          <span>Analyze</span>
+        </button>
+      </div>
+      <div class="search-options">
+        <label class="checkbox-label">
+          <input type="checkbox" id="force-refresh-cb">
+          <span>Force live fetch (ignore cache)</span>
+        </label>
+      </div>
+      <div class="search-hints" id="recent-targets" style="display:none; justify-content:center; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">
+        <!-- Filled by JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== LOADING OVERLAY ==================== -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loader-card">
+      <div class="loader-spinner">
+        <div class="spinner-ring"></div>
+        <div class="spinner-ring"></div>
+        <div class="spinner-ring"></div>
+      </div>
+      <h3 class="loader-title">Analyzing Reddit Profile</h3>
+      <p class="loader-text" id="loader-status">Fetching user data...</p>
+      <div class="loader-progress">
+        <div class="loader-progress-bar" id="loader-progress-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== ERROR BANNER ==================== -->
+  <div class="error-banner" id="error-banner">
+    <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="15" y1="9" x2="9" y2="15"></line>
+      <line x1="9" y1="9" x2="15" y2="15"></line>
+    </svg>
+    <span id="error-message">Something went wrong</span>
+    <button class="error-close" id="error-close" aria-label="Close error">&times;</button>
+  </div>
+
+  <!-- ==================== DASHBOARD ==================== -->
+  <main class="dashboard" id="dashboard">
+
+    <div class="cache-indicator" id="cache-indicator">
+      <span class="cache-badge live">Live Data</span>
+    </div>
+
+    <!-- ===== Profile Card ===== -->
+    <section class="card profile-card" id="profile-section">
+      <div class="profile-header">
+        <div class="profile-avatar-wrap">
+          <img id="profile-avatar" class="profile-avatar" src="" alt="User avatar">
+          <div class="profile-avatar-ring"></div>
+        </div>
+        <div class="profile-info">
+          <h2 class="profile-username" id="profile-username">—</h2>
+          <p class="profile-meta" id="profile-created">—</p>
+        </div>
+        <div class="profile-actions" style="display:flex; gap:0.5rem;">
+          <button id="export-pdf-btn" class="btn-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span>Export PDF</span>
+          </button>
+          <button id="monitor-toggle-btn" class="btn-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <span id="monitor-btn-text">Monitor User</span>
+          </button>
+        </div>
+      </div>
+      <div class="karma-grid">
+        <div class="karma-item"><span class="karma-value" id="profile-karma">—</span><span class="karma-label">Total Karma</span></div>
+        <div class="karma-item"><span class="karma-value" id="profile-link-karma">—</span><span class="karma-label">Post Karma</span></div>
+        <div class="karma-item"><span class="karma-value" id="profile-comment-karma">—</span><span class="karma-label">Comment Karma</span></div>
+        <div class="karma-item"><span class="karma-value" id="profile-age">—</span><span class="karma-label">Account Age</span></div>
+      </div>
+    </section>
+
+    <!-- ===== AI Analysis (NEW) ===== -->
+    <section class="card ai-card" id="ai-section">
+      <div class="card-header flex-between">
+        <div>
+          <h3 class="card-title">AI Profile Assessment</h3>
+          <span class="card-subtitle" id="ai-model-info">Powered by AI</span>
+        </div>
+        <div class="tab-buttons">
+          <button class="tab-btn active" data-tab="ai-intel">Intelligence Officer</button>
+          <button class="tab-btn" data-tab="ai-lawyer">Legal Risk</button>
+        </div>
+      </div>
+      <div class="ai-content-wrap">
+        <div id="ai-intel" class="tab-content active">
+          <div class="ai-placeholder" id="ai-intel-placeholder">
+            <button class="btn-primary" id="btn-generate-intel">Generate Intelligence Assessment</button>
+          </div>
+          <div class="markdown-body" id="ai-intel-content" style="display:none;"></div>
+        </div>
+        <div id="ai-lawyer" class="tab-content">
+          <div class="ai-placeholder" id="ai-lawyer-placeholder">
+            <button class="btn-primary" id="btn-generate-lawyer">Generate Legal Assessment</button>
+          </div>
+          <div class="markdown-body" id="ai-lawyer-content" style="display:none;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Connection Graph (NEW) ===== -->
+    <section class="card graph-card" id="graph-section">
+      <div class="card-header flex-between">
+        <div>
+          <h3 class="card-title">User Connection Graph</h3>
+          <span class="card-subtitle">Spider graph of reply interactions</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-outline btn-sm" id="btn-refresh-graph">Refresh</button>
+          <button class="btn-outline btn-sm" id="btn-maximize-graph">Maximize</button>
+        </div>
+      </div>
+      <div class="graph-container" id="graph-container">
+        <!-- D3 Graph injected here -->
+      </div>
+    </section>
+
+    <!-- ===== Stats Grid ===== -->
+    <section class="stats-grid" id="stats-section">
+      <!-- (Same as V1) -->
+      <div class="stat-card"><div class="stat-icon stat-icon-posts">P</div><span class="stat-value" id="stat-total-posts">—</span><span class="stat-label">Posts Analyzed</span></div>
+      <div class="stat-card"><div class="stat-icon stat-icon-comments">C</div><span class="stat-value" id="stat-total-comments">—</span><span class="stat-label">Comments Analyzed</span></div>
+      <div class="stat-card"><div class="stat-icon stat-icon-score">S</div><span class="stat-value" id="stat-avg-post-score">—</span><span class="stat-label">Avg Post Score</span></div>
+      <div class="stat-card"><div class="stat-icon stat-icon-comment-score">S</div><span class="stat-value" id="stat-avg-comment-score">—</span><span class="stat-label">Avg Comment Score</span></div>
+      <div class="stat-card"><div class="stat-icon stat-icon-sub">A</div><span class="stat-value" id="stat-most-active-sub">—</span><span class="stat-label">Most Active Sub</span></div>
+      <div class="stat-card"><div class="stat-icon stat-icon-freq">F</div><span class="stat-value" id="stat-post-frequency">—</span><span class="stat-label">Posts / Week</span></div>
+    </section>
+
+    <!-- ===== Karma Timeline Chart ===== -->
+    <section class="card chart-card">
+      <div class="card-header">
+        <h3 class="card-title">Karma Growth Timeline</h3>
+        <span class="card-subtitle">Cumulative karma over time</span>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-karma"></canvas></div>
+    </section>
+
+    <!-- ===== Advanced Analytics Row ===== -->
+    <div class="chart-row" style="margin-bottom: 1.5rem; gap: 1.5rem;">
+      <!-- Engagement Metrics -->
+      <section class="card">
+        <div class="card-header">
+          <h3 class="card-title">Engagement Metrics</h3>
+        </div>
+        <div class="engagement-grid">
+          <div class="engagement-item">
+            <div class="engagement-ring">
+              <svg viewBox="0 0 36 36" class="ring-svg">
+                <path class="ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path class="ring-fill" id="ring-upvote-ratio" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+              </svg>
+              <div class="ring-value" id="val-upvote-ratio">0%</div>
+            </div>
+            <div class="engagement-label">Upvote Ratio</div>
+          </div>
+          <div class="engagement-item">
+            <div class="engagement-ring">
+              <svg viewBox="0 0 36 36" class="ring-svg">
+                <path class="ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path class="ring-fill" id="ring-comment-ratio" stroke-dasharray="0, 100" stroke="var(--info)" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+              </svg>
+              <div class="ring-value" id="val-comment-ratio" style="color:var(--info)">0</div>
+            </div>
+            <div class="engagement-label">Comments / Post</div>
+          </div>
+        </div>
+        <div class="engagement-stats-list">
+          <div class="engagement-stat-row">
+            <span class="engagement-stat-label">Controversial Posts</span>
+            <span class="engagement-stat-value" id="val-controversial">0</span>
+          </div>
+          <div class="engagement-stat-row">
+            <span class="engagement-stat-label">Median Post Score</span>
+            <span class="engagement-stat-value" id="val-median-score">0</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Writing Style & Sentiment -->
+      <section class="card">
+        <div class="card-header flex-between" style="align-items: center;">
+          <h3 class="card-title">Writing Style</h3>
+          <span class="sentiment-badge" id="badge-sentiment">Neutral</span>
+        </div>
+        <div class="analysis-stats">
+          <div class="analysis-stat">
+            <span class="analysis-stat-value" id="val-vocab-size">0</span>
+            <span class="analysis-stat-label">Est. Vocabulary</span>
+          </div>
+          <div class="analysis-stat">
+            <span class="analysis-stat-value" id="val-avg-words">0</span>
+            <span class="analysis-stat-label">Words / Comment</span>
+          </div>
+        </div>
+        <div class="chart-wrap chart-wrap-words" style="height:150px;">
+          <canvas id="chart-words"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== Subreddit Distribution + Hourly Activity ===== -->
+    <div class="chart-row">
+      <section class="card chart-card">
+        <div class="card-header">
+          <h3 class="card-title">Subreddit Distribution</h3>
+        </div>
+        <div class="chart-wrap chart-wrap-doughnut"><canvas id="chart-subreddits"></canvas></div>
+      </section>
+      <section class="card chart-card">
+        <div class="card-header">
+          <h3 class="card-title">Activity by Hour</h3>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-hourly"></canvas></div>
+      </section>
+    </div>
+
+    <!-- ===== Activity Heatmap ===== -->
+    <section class="card heatmap-card">
+      <div class="card-header">
+        <h3 class="card-title">Activity Heatmap</h3>
+      </div>
+      <div class="heatmap-wrap"><div id="heatmap-container" class="heatmap-container"></div></div>
+    </section>
+
+    <!-- ===== Text Explorer (NEW) ===== -->
+    <section class="card text-explorer-card" id="text-explorer-section">
+      <div class="card-header">
+        <h3 class="card-title">Text Explorer</h3>
+        <span class="card-subtitle">Analyze word usage across all comments</span>
+      </div>
+      <div class="text-explorer-layout">
+        <div class="word-list-panel">
+          <input type="text" id="word-search" class="text-input" placeholder="Filter words...">
+          <ul id="word-list" class="word-list"></ul>
+        </div>
+        <div class="word-details-panel">
+          <h4 id="selected-word-title">Select a word</h4>
+          <div class="chart-wrap" style="height:150px"><canvas id="chart-word-timeline"></canvas></div>
+          <div id="word-contexts" class="word-contexts"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Content Tables (Latest / Most Liked / Disliked tabs) ===== -->
+    <section class="card table-card">
+      <div class="card-header flex-between">
+        <h2 class="card-title">Latest Content</h2>
+        <div class="tab-buttons">
+          <button class="tab-btn active" data-tab="table-latest">Latest Content</button>
+          <button class="tab-btn" data-tab="table-liked">Most Liked</button>
+          <button class="tab-btn" data-tab="table-disliked">Most Disliked</button>
+        </div>
+      </div>
+      
+      <div id="table-latest" class="tab-content active table-responsive">
+        <table class="data-table" id="latest-table">
+          <thead><tr><th>Type</th><th>Subreddit</th><th>Score</th><th>Content</th><th>Date</th></tr></thead>
+          <tbody id="latest-body"></tbody>
+        </table>
+      </div>
+
+      <div id="table-liked" class="tab-content table-responsive">
+        <table class="data-table" id="liked-table">
+          <thead><tr><th>Type</th><th>Subreddit</th><th>Score ▼</th><th>Content</th><th>Date</th></tr></thead>
+          <tbody id="liked-body"></tbody>
+        </table>
+      </div>
+
+      <div id="table-disliked" class="tab-content table-responsive">
+        <table class="data-table" id="disliked-table">
+          <thead><tr><th>Type</th><th>Subreddit</th><th>Score ▲</th><th>Content</th><th>Date</th></tr></thead>
+          <tbody id="disliked-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer" id="app-footer">
+    <div class="footer-inner">
+      <p class="footer-text"><strong>RedTrack V2</strong> — Open source Reddit analysis.</p>
+    </div>
+  </footer>
+
+  <script src="graph.js"></script>
+  <script src="analysis.js"></script>
+  <script src="charts.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
