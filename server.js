@@ -97,7 +97,7 @@ app.post('/api/logout', (req, res) => {
 });
 
 // Reddit API configuration
-const REDDIT_USER_AGENT = 'RedTrack/2.0 (Open Source Reddit Analyzer)';
+const REDDIT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const RATE_LIMIT_DELAY_MS = 2000;
 const RETRY_DELAY_MS = 10000;
 const MAX_PAGES = 5;

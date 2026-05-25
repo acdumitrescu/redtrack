@@ -13,6 +13,7 @@
     "express": "^4.21.0",
     "express-rate-limit": "^8.5.2",
     "node-cron": "^3.0.3",
+    "puppeteer": "^25.0.4",
     "sql.js": "^1.11.0"
   }
 }

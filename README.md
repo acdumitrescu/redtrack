@@ -10,12 +10,14 @@ RedTrack is an open-source, full-stack Reddit user analysis application. It allo
 2. **Text Explorer**: Analyzes all historical comments to build a word frequency index. You can click on commonly used words to see the full context of how they were used. It includes an aggressive stop-words filter (for both English and Romanian) to strip out uninteresting filler verbs and conjunctions.
 3. **Connections Graph (D3.js)**: A force-directed node graph that visualizes the network of people the target user replies to the most. Click on a connected node to open a modal that displays the exact comments that were exchanged between the two users.
 4. **AI-Powered Intelligence**: Integrates directly with Google Gemini (via `gemini-2.5-flash`) to analyze the user's historical behavior and psychological footprint. Generates reports from two distinct perspectives:
-   - **Intelligence Analyst**: Focuses on habits, potential locations, traits, and operational patterns.
+   - **Behavioral Analyst**: Focuses on habits, potential locations, traits, and operational patterns.
    - **Defense Lawyer**: Paints the user in the best possible light, highlighting positive contributions, expertise, and community helpfulness.
 5. **Background Monitoring**: You can select specific users to "Monitor." A Node.js background cron job will automatically refresh their profile data every few minutes.
 6. **Smart SQLite Caching**: User data is strictly saved to a local `redtrack.db` SQLite file (powered by `sql.js`). To prevent overloading Reddit's API, RedTrack prioritizes fetching from the database first. If a user's data was extracted in the last 12 hours, the app pulls from the database instead of Reddit. Pagination from Reddit is limited to 5 pages (500 items max).
 7. **Export to PDF**: Generate clean, paginated PDF reports of a user's activity directly from their profile.
-8. **Admin Dashboard**: A securely password-protected view for the server admin to observe high-level DB stats and browse all historically searched/stored users in a unified table.
+8. **Admin Dashboard & Background Monitoring**: A securely password-protected view for the server admin to observe high-level DB stats and browse all historically searched/stored users in a unified table. From here, you can toggle **"Monitor"** on specific users. A Node.js background cron job will automatically sweep Reddit every few minutes to refresh the profiles of any "Monitored Users," alerting you to new activity. You can also configure a **"My Monitor"** target to track your own profile.
+
+![Admin Dashboard](docs/demo_admin.png)
 
 ## Prerequisites
 

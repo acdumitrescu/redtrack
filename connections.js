@@ -71,8 +71,8 @@ async function buildConnectionGraph(username, comments) {
   const parentIds = [...new Set(commentReplies.map(c => c.parent_id))];
   console.log(`[Connections] Analyzing ${commentReplies.length} replies to ${parentIds.length} unique parent comments`);
 
-  // Cap at 500 to stay within reason
-  const cappedIds = parentIds.slice(0, 500);
+  // Cap at 100 to stay within reason and ensure the graph loads quickly
+  const cappedIds = parentIds.slice(0, 100);
   const authorMap = await fetchAuthorsForIds(cappedIds);
 
   // Build interaction tally
