@@ -1,5 +1,7 @@
 # RedTrack
 
+![RedTrack Dashboard Demo](docs/demo_dashboard.png)
+
 RedTrack is an open-source, full-stack Reddit user analysis application. It allows you to search for a Reddit user and generates comprehensive visualizations, intelligence summaries, and text metrics without requiring official Reddit API credentials (it bypasses PRAW and standard OAuth by scraping public JSON endpoints).
 
 ## Key Features
