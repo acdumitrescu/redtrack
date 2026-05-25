@@ -1,5 +1,5 @@
 // ============================================================================
-// server.js — RedTrack V2 Server
+// server.js — RedTrack Server
 // Express proxy + SQLite storage + monitoring + AI analysis
 // ============================================================================
 
@@ -689,7 +689,7 @@ async function start() {
   startSubMonitor();
 
   app.listen(PORT, () => {
-    console.log(`\n🔴 RedTrack V2 running at http://localhost:${PORT}`);
+    console.log(`\n🔴 RedTrack running at http://localhost:${PORT}`);
     console.log(`   DB: ${db.getDBStats().dbPath}`);
     console.log(`   AI: ${getConfig().configured ? `${getConfig().provider} / ${getConfig().model}` : 'Not configured (set AI_API_KEY in .env)'}`);
     console.log('');

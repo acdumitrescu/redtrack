@@ -1,5 +1,5 @@
 // ============================================================================
-// app.js — RedTrack V2 Orchestrator
+// app.js — RedTrack Orchestrator
 // Handles UI state, API fetching, and chart/table rendering
 // ============================================================================
 
