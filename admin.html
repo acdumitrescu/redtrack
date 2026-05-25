@@ -83,7 +83,22 @@
 
     async function login() {
       const pw = document.getElementById('admin-pw').value;
-      const res = await fetch('/api/admin/users', { headers: { 'x-admin-password': pw } });
+      const loginRes = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw })
+      });
+      const loginJson = await loginRes.json();
+      
+      if (!loginJson.success) {
+        const err = document.getElementById('auth-error');
+        err.textContent = loginJson.error || 'Login failed';
+        err.style.display = 'block';
+        return;
+      }
+
+      adminToken = 'true';
+      const res = await fetch('/api/admin/users');
       const json = await res.json();
       
       if (!json.success) {
@@ -91,7 +106,6 @@
         err.textContent = json.error;
         err.style.display = 'block';
       } else {
-        adminToken = pw;
         document.getElementById('auth-section').style.display = 'none';
         document.getElementById('admin-content').style.display = 'block';
         renderUsers(json.data);
@@ -100,7 +114,7 @@
     }
 
     async function loadStats() {
-      const res = await fetch('/api/db/stats', { headers: { 'x-admin-password': adminToken } });
+      const res = await fetch('/api/db/stats');
       const json = await res.json();
       if (json.success) {
         document.getElementById('stat-db-users').textContent = json.data.users;
@@ -124,9 +138,27 @@
           <td>${u.total_karma.toLocaleString()}</td>
           <td>${formatDate(u.created_utc)}</td>
           <td>${formatDate(u.fetched_at)}</td>
-          <td><button class="btn-sm btn-outline" onclick="location.href='/?u=${encodeURIComponent(u.username)}'">View Details</button></td>
+          <td>
+            <button class="btn-sm btn-outline" onclick="location.href='/?u=${encodeURIComponent(u.username)}'">View Details</button>
+            <button class="btn-sm" style="background:var(--negative);color:white;border:none;margin-left:0.5rem;" onclick="deleteUser('${escapeHTML(u.username)}')">Delete</button>
+          </td>
         </tr>
       `).join('');
+    }
+
+    async function deleteUser(username) {
+      if (!confirm(`Are you sure you want to completely delete all data for u/${username}?`)) return;
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        // Reload users
+        const getRes = await fetch('/api/admin/users');
+        const getJson = await getRes.json();
+        if (getJson.success) renderUsers(getJson.data);
+        loadStats();
+      } else {
+        alert('Failed to delete user: ' + json.error);
+      }
     }
 
     // Auto-login on enter

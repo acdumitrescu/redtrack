@@ -602,6 +602,35 @@ function getRecentApiRequestCount(hours = 6) {
   return row ? row.count : 0;
 }
 
+// ---------------------------------------------------------------------------
+// Data Retention
+// ---------------------------------------------------------------------------
+function deleteUser(username) {
+  const u = username.toLowerCase();
+  run('DELETE FROM comments WHERE username = ?', [u]);
+  run('DELETE FROM posts WHERE username = ?', [u]);
+  run('DELETE FROM karma_snapshots WHERE username = ?', [u]);
+  run('DELETE FROM connections WHERE source_user = ? OR target_user = ?', [u, u]);
+  run('DELETE FROM ai_analysis WHERE username = ?', [u]);
+  run('DELETE FROM user_monitors WHERE username = ?', [u]);
+  run('DELETE FROM users WHERE username = ?', [u]);
+  saveDB();
+}
+
+function sweepOldData(days) {
+  if (!days || days <= 0) return;
+  const cutoff = Math.floor(Date.now() / 1000) - (days * 86400);
+  
+  // Keep users and monitors, but delete old posts, comments, connections, analysis, etc.
+  run('DELETE FROM comments WHERE created_utc < ?', [cutoff]);
+  run('DELETE FROM posts WHERE created_utc < ?', [cutoff]);
+  run('DELETE FROM karma_snapshots WHERE snapped_at < ?', [cutoff]);
+  run('DELETE FROM ai_analysis WHERE generated_at < ?', [cutoff]);
+  run('DELETE FROM api_requests WHERE timestamp < ?', [cutoff]);
+  // Also clean up connections if they are old, although connections themselves don't have a timestamp directly.
+  saveDB();
+}
+
 module.exports = {
   initDB, saveDB,
   upsertUser, getUser, getAllUsers,
@@ -616,5 +645,6 @@ module.exports = {
   getDBStats,
   addLiveTap, removeLiveTap, getLiveTaps, getTapsDueForCheck, updateLiveTapCheck,
   insertTappedPosts, getActiveTappedPosts, getTappedPostsBySub, updateTappedPostStatus,
-  logApiRequest, getRecentApiRequestCount
+  logApiRequest, getRecentApiRequestCount,
+  deleteUser, sweepOldData
 };

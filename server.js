@@ -17,8 +17,21 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+const cookieParser = require('cookie-parser');
+app.use(cookieParser());
 
 const rateLimit = require('express-rate-limit');
+
+// ---------------------------------------------------------------------------
+// Security Headers (CSP)
+// ---------------------------------------------------------------------------
+app.use((_req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://d3js.org https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.redditstatic.com https://styles.redditmedia.com https://a.thumbs.redditmedia.com https://b.thumbs.redditmedia.com; connect-src 'self';"
+  );
+  next();
+});
 
 // General API rate limiter (100 req per 15 minutes)
 const globalLimiter = rateLimit({
@@ -39,6 +52,49 @@ const aiLimiter = rateLimit({
 });
 
 app.use('/api', globalLimiter);
+
+// Admin/Login rate limiter (10 req per 15 mins to prevent brute-force)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, error: 'Too many login attempts. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api', globalLimiter);
+
+app.post('/api/login', loginLimiter, (req, res) => {
+  const pw = req.body.password || '';
+  const expectedPw = process.env.ADMIN_PASSWORD;
+  if (!expectedPw) {
+    return res.status(401).json({ success: false, error: 'Auth not configured.' });
+  }
+  const crypto = require('crypto');
+  const pwBuffer = Buffer.from(pw);
+  const expectedBuffer = Buffer.from(expectedPw);
+  if (pwBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(pwBuffer, expectedBuffer)) {
+    // Generate a secure session cookie
+    const token = crypto.randomBytes(32).toString('hex');
+    // In a real app we'd store this token in a DB session table.
+    // For this simple app, we can just sign a cookie or set a simple flag since there's only 1 admin.
+    // To keep it simple, we'll hash the password to store in the cookie so it's not plain text.
+    const hash = crypto.createHmac('sha256', process.env.ADMIN_PASSWORD).update('session').digest('hex');
+    res.cookie('redtrack_session', hash, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
+    return res.json({ success: true });
+  }
+  return res.status(401).json({ success: false, error: 'Invalid password' });
+});
+
+app.post('/api/logout', (req, res) => {
+  res.clearCookie('redtrack_session');
+  res.json({ success: true });
+});
 
 // Reddit API configuration
 const REDDIT_USER_AGENT = 'RedTrack/2.0 (Open Source Reddit Analyzer)';
@@ -65,9 +121,10 @@ app.get('/', (_req, res) => {
 // CORS for all /api routes
 // ---------------------------------------------------------------------------
 app.use('/api', (_req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cookie');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   next();
 });
 app.options('/api/*', (_req, res) => res.sendStatus(200));
@@ -165,7 +222,7 @@ app.get('/api/user/:username/about', async (req, res) => {
     return res.json({ success: true, data: userData, fromCache: false });
   } catch (err) {
     console.error(`[RedTrack] about error for ${username}:`, err.message);
-    return res.json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -215,7 +272,7 @@ app.get('/api/user/:username/posts', async (req, res) => {
     });
   } catch (err) {
     console.error(`[RedTrack] posts error for ${username}:`, err.message);
-    return res.json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -265,7 +322,7 @@ app.get('/api/user/:username/comments', async (req, res) => {
     });
   } catch (err) {
     console.error(`[RedTrack] comments error for ${username}:`, err.message);
-    return res.json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -307,8 +364,8 @@ app.get('/api/user/:username/connections', async (req, res) => {
     }
     return res.json({ success: true, data: graph });
   } catch (err) {
-    console.error(`[RedTrack] connections error for ${username}:`, err.message);
-    return res.json({ success: false, error: err.message });
+    console.error(`[RedTrack] connections error for ${username}:`, err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -348,7 +405,8 @@ app.get('/api/user/:username/connections/:connected/comments', async (req, res) 
     const matchedComments = commentReplies.filter(c => authorMap[c.parent_id]);
     return res.json({ success: true, data: matchedComments });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -366,21 +424,22 @@ function getNodeColor(count, maxCount) {
 const crypto = require('crypto');
 
 const meAuth = (req, res, next) => {
-  const pw = req.headers['x-admin-password'] || '';
+  const session = req.cookies.redtrack_session;
   const expectedPw = process.env.ADMIN_PASSWORD;
   
   if (!expectedPw) {
     return res.status(401).json({ success: false, error: 'Unauthorized. Auth not configured.' });
   }
 
-  // Use timing-safe comparison
-  const pwBuffer = Buffer.from(pw);
-  const expectedBuffer = Buffer.from(expectedPw);
-
-  if (pwBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(pwBuffer, expectedBuffer)) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!session) {
+    return res.status(401).json({ success: false, error: 'Unauthorized. Please log in.' });
   }
 
+  const expectedHash = crypto.createHmac('sha256', expectedPw).update('session').digest('hex');
+  if (session !== expectedHash) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  
   const myUser = process.env.MY_REDDIT_USERNAME;
   if (!myUser) {
     return res.status(400).json({ success: false, error: 'MY_REDDIT_USERNAME not set in .env' });
@@ -389,6 +448,24 @@ const meAuth = (req, res, next) => {
   req.myUser = myUser;
   next();
 };
+
+app.use('/api/me', loginLimiter);
+
+// ---------------------------------------------------------------------------
+// Login endpoint
+// ---------------------------------------------------------------------------
+app.post('/api/login', loginLimiter, (req, res) => {
+  const { password } = req.body;
+  const expectedPw = process.env.ADMIN_PASSWORD;
+
+  if (!expectedPw || password !== expectedPw) {
+    return res.status(401).json({ success: false, error: 'Invalid password' });
+  }
+
+  const sessionHash = crypto.createHmac('sha256', expectedPw).update('session').digest('hex');
+  res.cookie('redtrack_session', sessionHash, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+  return res.json({ success: true });
+});
 
 // ---------------------------------------------------------------------------
 // Monitoring endpoints
@@ -400,7 +477,8 @@ app.post('/api/monitor/:username', meAuth, async (req, res) => {
     db.addMonitoredUser(username, parseInt(interval));
     return res.json({ success: true, message: `Now monitoring u/${username} every ${interval} minutes` });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -410,7 +488,8 @@ app.delete('/api/monitor/:username', meAuth, async (req, res) => {
     db.removeMonitoredUser(username);
     return res.json({ success: true, message: `Stopped monitoring u/${username}` });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -427,7 +506,8 @@ app.get('/api/monitors', (_req, res) => {
     }));
     return res.json({ success: true, data: enriched });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -494,8 +574,8 @@ app.post('/api/user/:username/ai-analysis', aiLimiter, async (req, res) => {
 
     return res.json({ success: true, data: result, perspective });
   } catch (err) {
-    console.error(`[RedTrack] AI analysis error for ${username}:`, err.message);
-    return res.json({ success: false, error: err.message });
+    console.error(`[RedTrack] AI analysis error for ${username}:`, err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -505,7 +585,8 @@ app.get('/api/user/:username/ai-analysis', (req, res) => {
     const analyses = db.getAIAnalyses(username);
     return res.json({ success: true, data: analyses });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -514,7 +595,8 @@ app.get('/api/stats/requests', (req, res) => {
     const count = db.getRecentApiRequestCount(6);
     return res.json({ success: true, data: { count } });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -528,7 +610,8 @@ app.post('/api/subreddit/monitor', meAuth, (req, res) => {
     db.addLiveTap(subreddit);
     return res.json({ success: true, message: `Started wiretap on r/${subreddit}` });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -538,7 +621,8 @@ app.delete('/api/subreddit/monitor/:subreddit', meAuth, (req, res) => {
     db.removeLiveTap(subreddit);
     return res.json({ success: true, message: `Removed wiretap on r/${subreddit}` });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -548,7 +632,8 @@ app.post('/api/subreddit/monitor/:subreddit/force-fetch', meAuth, async (req, re
     const insertedCount = await forceFetchSubreddit(subreddit);
     return res.json({ success: true, message: `Force fetched ${insertedCount} recent post(s)` });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -557,7 +642,8 @@ app.get('/api/subreddit/taps', (req, res) => {
     const taps = db.getLiveTaps();
     return res.json({ success: true, data: taps });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -567,7 +653,8 @@ app.get('/api/subreddit/:subreddit', (req, res) => {
     const posts = db.getTappedPostsBySub(subreddit);
     return res.json({ success: true, data: posts });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -575,7 +662,7 @@ app.get('/api/subreddit/:subreddit', (req, res) => {
 // Personal Monitor (/me)
 // ---------------------------------------------------------------------------
 
-app.get('/me', (req, res) => {
+app.get('/me', loginLimiter, (req, res) => {
   res.sendFile(path.join(__dirname, 'me.html'));
 });
 
@@ -601,7 +688,8 @@ app.get('/api/me/summary', meAuth, (req, res) => {
     
     return res.json({ success: true, data: { user: user.parsed || user, delta24, delta7d } });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -610,7 +698,8 @@ app.get('/api/me/karma-log', meAuth, (req, res) => {
     const snaps = db.getKarmaSnapshots(req.myUser);
     return res.json({ success: true, data: snaps });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -619,7 +708,8 @@ app.get('/api/me/posts', meAuth, (req, res) => {
     const posts = db.getUserPosts(req.myUser);
     return res.json({ success: true, data: posts });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -628,7 +718,8 @@ app.get('/api/me/comments', meAuth, (req, res) => {
     const comments = db.getUserComments(req.myUser);
     return res.json({ success: true, data: comments });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -637,7 +728,8 @@ app.get('/api/me/interactions', meAuth, (req, res) => {
     const conns = db.getConnections(req.myUser);
     return res.json({ success: true, data: conns });
   } catch (err) {
-    return res.json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    return res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -649,31 +741,28 @@ app.get('/api/db/stats', meAuth, (_req, res) => {
 });
 
 // Serve admin dashboard HTML
-app.get('/admin', (req, res) => {
+app.get('/admin', loginLimiter, (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
 // Secure API endpoint for admin data
-app.get('/api/admin/users', (req, res) => {
-  const pw = req.headers['x-admin-password'] || '';
-  const expectedPw = process.env.ADMIN_PASSWORD;
-  
-  if (!expectedPw) {
-    return res.status(401).json({ success: false, error: 'Unauthorized. Auth not configured.' });
-  }
-
-  const pwBuffer = Buffer.from(pw);
-  const expectedBuffer = Buffer.from(expectedPw);
-
-  if (pwBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(pwBuffer, expectedBuffer)) {
-    return res.status(401).json({ success: false, error: 'Unauthorized. Invalid admin password.' });
-  }
-  
+app.get('/api/admin/users', loginLimiter, meAuth, (req, res) => {
   try {
-    const users = db.getAllUsers();
-    return res.json({ success: true, data: users });
+    res.json({ success: true, data: db.getAllUsers() });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    console.error('[Error]', err);
+    res.status(500).json({ success: false, error: 'Internal server error occurred.' });
+  }
+});
+
+app.delete('/api/admin/users/:username', loginLimiter, meAuth, (req, res) => {
+  try {
+    const { username } = req.params;
+    db.deleteUser(username);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Error]', err);
+    res.status(500).json({ success: false, error: 'Internal server error occurred.' });
   }
 });
 
@@ -683,6 +772,13 @@ app.get('/api/admin/users', (req, res) => {
 async function start() {
   // Init DB first
   await db.initDB();
+
+  // Run data retention sweep if configured
+  const retentionDays = parseInt(process.env.DATA_RETENTION_DAYS || '0', 10);
+  if (retentionDays > 0) {
+    db.sweepOldData(retentionDays);
+    console.log(`[RedTrack] Swept old data (retention: ${retentionDays} days).`);
+  }
 
   // Start monitoring scheduler
   startMonitor();

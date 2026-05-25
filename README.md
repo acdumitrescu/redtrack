@@ -44,7 +44,7 @@ RedTrack is an open-source, full-stack Reddit user analysis application. It allo
    AI_MODEL=gemini-2.5-flash
 
    # Your secure password to access the /admin dashboard
-   ADMIN_PASSWORD=redtrack123
+   ADMIN_PASSWORD=your_secure_password_here
    ```
 
 ## Running the Application

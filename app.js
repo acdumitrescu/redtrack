@@ -160,9 +160,17 @@
     if (!container) return;
     if (recents.length > 0) {
       container.style.display = 'flex';
-      container.innerHTML = recents.map(function(r) {
-        return `<button class="btn-sm btn-outline" onclick="document.getElementById('search-input').value='${escapeHTML(r)}'; document.getElementById('search-btn').click()">u/${escapeHTML(r)}</button>`;
-      }).join('');
+      container.innerHTML = ''; // Clear
+      recents.forEach(function(r) {
+        var btn = document.createElement('button');
+        btn.className = 'btn-sm btn-outline';
+        btn.textContent = 'u/' + r;
+        btn.onclick = function() {
+          document.getElementById('search-input').value = r;
+          document.getElementById('search-btn').click();
+        };
+        container.appendChild(btn);
+      });
     } else {
       container.style.display = 'none';
     }
@@ -310,6 +318,14 @@
     });
   }
 
+  function safeHTML(html) {
+    if (typeof DOMPurify !== 'undefined') {
+      return DOMPurify.sanitize(html, { ADD_ATTR: ['target'] });
+    }
+    console.error('DOMPurify is not loaded! Blocking HTML injection for security.');
+    return '';
+  }
+
   // -------------------------------------------------------------------------
   // Render functions
   // -------------------------------------------------------------------------
@@ -426,10 +442,10 @@
                    .slice(0, 50);
 
     var elsLatest = document.getElementById('latest-body');
-    if (elsLatest) elsLatest.innerHTML = latest.map(buildRow).join('');
+    if (elsLatest) elsLatest.innerHTML = safeHTML(latest.map(buildRow).join(''));
 
-    els.likedBody.innerHTML = liked.map(buildRow).join('');
-    els.dislikedBody.innerHTML = disliked.map(buildRow).join('');
+    els.likedBody.innerHTML = safeHTML(liked.map(buildRow).join(''));
+    els.dislikedBody.innerHTML = safeHTML(disliked.map(buildRow).join(''));
   }
 
   // -------------------------------------------------------------------------
@@ -476,24 +492,21 @@
   function selectWord(word) {
     if (!state.wordIndex || !state.wordIndex[word]) return;
     var entry = state.wordIndex[word];
-    els.selectedWordTitle.innerHTML = `Usage of "<span style="color:#fff">${escapeHTML(word)}</span>"`;
+    els.selectedWordTitle.innerHTML = safeHTML(`Usage of "<span style="color:#fff">${escapeHTML(word)}</span>"`);
 
     var timeline = getWordTimeline(state.wordIndex, word);
     if (typeof renderWordTimeline !== 'undefined') {
       renderWordTimeline('chart-word-timeline', timeline, word);
     }
-
-    els.wordContexts.innerHTML = entry.comments.map(function(c) {
-      var escapedBody = escapeHTML(c.body || '');
-      var bodyHtml = escapedBody.replace(new RegExp('\\b(' + escapeHTML(word) + ')\\b', 'gi'), '<span class="highlight-word">$1</span>');
-      return `<div class="context-item">
-        <div class="context-meta">
-          <span>r/${escapeHTML(c.subreddit)} • Score: ${c.score} • ${formatDate(c.date)}</span>
-          <a href="https://reddit.com${escapeHTML(c.permalink)}" target="_blank">View ↗</a>
-        </div>
-        <div>${bodyHtml}</div>
+    els.wordContexts.innerHTML = safeHTML(entry.comments.map(function(c) {
+      var d = new Date(c.created_utc * 1000).toLocaleDateString();
+      var b = escapeHTML(c.body).replace(new RegExp(`\\b(${escapeHTML(word)})\\b`, 'gi'), '<span style="background:rgba(249,115,22,0.3);color:var(--accent);padding:0 2px;border-radius:2px;">$1</span>');
+      return `<div class="word-context-item">
+        <div class="word-context-meta">r/${escapeHTML(c.subreddit)} • ${d} • Score: ${c.score}</div>
+        <div class="word-context-body">"${b}"</div>
+        <a href="https://reddit.com${escapeHTML(c.permalink)}" target="_blank" style="font-size:0.75rem;color:var(--accent);text-decoration:none;margin-top:0.5rem;display:inline-block;">View on Reddit →</a>
       </div>`;
-    }).join('');
+    }).join(''));
   }
 
   // -------------------------------------------------------------------------
@@ -546,6 +559,10 @@
   }
 
   async function generateAIAnalysis(perspective) {
+    if (!confirm('Warning: This will send the user\'s public Reddit profile data (posts and comments) to a third-party AI provider for analysis. Do you consent to sharing this data?')) {
+      return;
+    }
+
     var btn = perspective === 'intelligence' ? els.btnGenerateIntel : els.btnGenerateLawyer;
     var originalText = btn.textContent;
     btn.textContent = 'Generating...';
@@ -578,10 +595,10 @@
     contentDiv.style.display = 'block';
     
     if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
-      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(markdown));
+      contentDiv.innerHTML = safeHTML(marked.parse(markdown));
     } else if (typeof marked !== 'undefined') {
       // Fallback if DOMPurify fails to load, though risky
-      contentDiv.innerHTML = marked.parse(markdown);
+      contentDiv.innerHTML = safeHTML(marked.parse(markdown));
     } else {
       // Safe fallback using textContent
       contentDiv.textContent = markdown;
@@ -604,32 +621,40 @@
     }
   }
 
-  async function toggleMonitor() {
-    var pw = window.sessionStorage.getItem('adminToken');
-    if (!pw) {
-      pw = prompt('Enter admin password to modify monitors:');
-      if (!pw) return;
+  async function ensureLogin() {
+    if (window.sessionStorage.getItem('adminToken') === 'true') return true;
+    var pw = prompt('Enter admin password:');
+    if (!pw) return false;
+    var r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    var j = await r.json();
+    if (j.success) {
+      window.sessionStorage.setItem('adminToken', 'true');
+      return true;
+    } else {
+      alert('Invalid password');
+      return false;
     }
+  }
+
+  async function toggleMonitor() {
+    if (!(await ensureLogin())) return;
 
     var method = state.isMonitored ? 'DELETE' : 'POST';
     try {
       var r = await fetch('/api/monitor/' + encodeURIComponent(state.username), {
         method: method,
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-password': pw
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ interval: 60 })
       });
       var json = await r.json();
       if (json.success) {
-        window.sessionStorage.setItem('adminToken', pw);
         await checkMonitorStatus();
       } else {
         showError(json.error || 'Failed to toggle monitor');
-        if (r.status === 401) {
-          window.sessionStorage.removeItem('adminToken');
-        }
       }
     } catch(e) {
       showError('Error: ' + e.message);
@@ -637,6 +662,11 @@
   }
 
   async function loadMonitors() {
+    if (!(await ensureLogin())) {
+      els.monitorsModal.classList.remove('active');
+      return;
+    }
+
     els.monitorsModal.classList.add('active');
     els.monitorsList.innerHTML = '<div style="text-align:center;padding:2rem;">Loading...</div>';
     
@@ -746,21 +776,21 @@
       
       var body = document.getElementById('connection-body');
       if (json.success && json.data && json.data.length > 0) {
-        body.innerHTML = json.data.map(function(c) {
+        body.innerHTML = safeHTML(json.data.map(function(c) {
           return `
           <div style="background:var(--bg-secondary);border:1px solid var(--border);padding:1rem;border-radius:var(--radius-md);margin-bottom:1rem;font-size:0.85rem;">
             <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;color:var(--text-muted);font-size:0.75rem;">
-              <span>r/` + c.subreddit + ` • Score: ` + c.score + `</span>
-              <a href="https://reddit.com` + c.permalink + `" target="_blank" style="color:var(--accent);text-decoration:none;">View ↗</a>
+              <span>r/` + escapeHTML(c.subreddit) + ` • Score: ` + c.score + `</span>
+              <a href="https://reddit.com` + escapeHTML(c.permalink) + `" target="_blank" style="color:var(--accent);text-decoration:none;">View ↗</a>
             </div>
-            <div style="color:var(--text-primary);line-height:1.5;">` + (c.body || '').replace(/</g,'&lt;').replace(/>/g,'&gt;') + `</div>
+            <div style="color:var(--text-primary);line-height:1.5;">` + escapeHTML(c.body) + `</div>
           </div>
-        `}).join('');
+        `}).join(''));
       } else {
-        body.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:2rem;">No specific comments found. They may have been deleted or skipped.</div>';
+        body.innerHTML = safeHTML('<div style="color:var(--text-muted);text-align:center;padding:2rem;">No specific comments found. They may have been deleted or skipped.</div>');
       }
     } catch(e) {
-      document.getElementById('connection-body').innerHTML = '<div style="color:var(--negative);text-align:center;padding:2rem;">Failed to load comments.</div>';
+      document.getElementById('connection-body').innerHTML = safeHTML('<div style="color:var(--negative);text-align:center;padding:2rem;">Failed to load comments.</div>');
     }
   };
 

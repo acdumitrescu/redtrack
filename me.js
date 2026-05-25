@@ -16,7 +16,20 @@
   window.login = async function() {
     const pw = document.getElementById('admin-pw').value;
     try {
-      const res = await fetch('/api/me/summary', { headers: { 'x-admin-password': pw } });
+      const loginRes = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw })
+      });
+      const loginJson = await loginRes.json();
+      
+      if (!loginJson.success) {
+        showAuthError(loginJson.error || 'Login failed');
+        return;
+      }
+
+      adminToken = 'true';
+      const res = await fetch('/api/me/summary');
       const json = await res.json();
       
       if (!json.success) {
@@ -24,7 +37,6 @@
         return;
       }
       
-      adminToken = pw;
       document.getElementById('auth-section').style.display = 'none';
       document.getElementById('dashboard').style.display = 'grid';
       
@@ -64,11 +76,17 @@
   // ---------------------------------------------------------------------------
   // Fetch Wrappers
   // ---------------------------------------------------------------------------
-  async function fetchMe(endpoint) {
-    const res = await fetch(endpoint, { headers: { 'x-admin-password': adminToken } });
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error);
-    return json.data;
+  async function fetchMe(type) {
+    try {
+      let endpoint = `/api/me/${type}`;
+      if (type === 'karma') endpoint = '/api/me/karma/log';
+      const res = await fetch(endpoint);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      return json.data;
+    } catch (e) {
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -100,10 +118,10 @@
 
   async function loadKarmaLog() {
     try {
-      const logs = await fetchMe('/api/me/karma-log');
+      const logs = await fetchMe('karma');
       const container = document.getElementById('karma-log-container');
       
-      if (logs.length < 2) {
+      if (!logs || logs.length < 2) {
         container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">Not enough snapshots yet. Check back later.</div>';
         return;
       }
@@ -136,11 +154,11 @@
   async function loadContent() {
     try {
       const [posts, comments] = await Promise.all([
-        fetchMe('/api/me/posts'),
-        fetchMe('/api/me/comments')
+        fetchMe('posts'),
+        fetchMe('comments')
       ]);
-      state.posts = posts;
-      state.comments = comments;
+      state.posts = posts || [];
+      state.comments = comments || [];
       
       renderFeed('all');
       renderActivityChart();
@@ -225,7 +243,7 @@
 
   async function loadInteractions() {
     try {
-      const data = await fetchMe('/api/me/interactions');
+      const data = await fetchMe('interactions');
       const tbody = document.getElementById('replied-body');
       
       if (!data || data.length === 0) {
@@ -294,10 +312,8 @@
     document.getElementById('connection-modal-title').textContent = 'Replies to u/' + connectedUser;
 
     try {
-      const json = await fetch(`/api/user/${encodeURIComponent(state.user.name)}/connections/${encodeURIComponent(connectedUser)}/comments`, {
-        headers: { 'x-admin-password': adminToken }
-      });
-      const res = await json.json();
+      const r = await fetch(`/api/user/${encodeURIComponent(state.user.name)}/connections/${encodeURIComponent(connectedUser)}/comments`);
+      const res = await r.json();
       
       const body = document.getElementById('connection-body');
       if (res.success && res.data && res.data.length > 0) {

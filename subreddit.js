@@ -19,13 +19,23 @@ document.addEventListener('DOMContentLoaded', function() {
   // Init
   loadTaps();
 
-  function getAdminPassword() {
-    let pw = window.sessionStorage.getItem('adminToken');
-    if (!pw) {
-      pw = prompt('Enter admin password for wiretap controls:');
-      if (pw) window.sessionStorage.setItem('adminToken', pw);
+  async function ensureLogin() {
+    if (window.sessionStorage.getItem('adminToken') === 'true') return true;
+    var pw = prompt('Enter admin password:');
+    if (!pw) return false;
+    var r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    var j = await r.json();
+    if (j.success) {
+      window.sessionStorage.setItem('adminToken', 'true');
+      return true;
+    } else {
+      alert('Invalid password');
+      return false;
     }
-    return pw;
   }
 
   // Add Tap
@@ -33,8 +43,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const sub = inputNew.value.trim().replace(/^r\//, '');
     if (!sub) return;
     
-    const pw = getAdminPassword();
-    if (!pw) return;
+    if (!(await ensureLogin())) return;
 
     btnAdd.disabled = true;
     btnAdd.innerText = 'Deploying...';
@@ -43,8 +52,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const res = await fetch('/api/subreddit/monitor', {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'x-admin-password': pw
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ subreddit: sub })
       });
@@ -69,13 +77,11 @@ document.addEventListener('DOMContentLoaded', function() {
   btnRemove.addEventListener('click', async () => {
     if (!currentTap || !confirm(`Sever wiretap on r/${currentTap}?`)) return;
     
-    const pw = getAdminPassword();
-    if (!pw) return;
+    if (!(await ensureLogin())) return;
 
     try {
       const res = await fetch(`/api/subreddit/monitor/${currentTap}`, { 
-        method: 'DELETE',
-        headers: { 'x-admin-password': pw }
+        method: 'DELETE'
       });
       const data = await res.json();
       if (!data.success) {
@@ -98,8 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
     btnForce.addEventListener('click', async () => {
       if (!currentTap) return;
       
-      const pw = getAdminPassword();
-      if (!pw) return;
+      if (!(await ensureLogin())) return;
 
       const originalText = btnForce.innerText;
       btnForce.disabled = true;
@@ -107,8 +112,7 @@ document.addEventListener('DOMContentLoaded', function() {
       
       try {
         const res = await fetch(`/api/subreddit/monitor/${currentTap}/force-fetch`, { 
-          method: 'POST',
-          headers: { 'x-admin-password': pw }
+          method: 'POST'
         });
         const data = await res.json();
         if (!data.success) {
